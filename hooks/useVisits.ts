@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import type { Visit } from '@/types/app';
@@ -12,8 +12,8 @@ export function useVisits() {
     queryKey: ['visits', orgId, selectedMemberId],
     queryFn: async () => {
       let query = supabase
-        .from('visits')
-        .select('*, member:members(id,name), hospital:hospitals(id,name), medications(*), medical_expenses(id,total_amount,payment_date)')
+        .from('t_visits')
+        .select('*, member:m_members(id,name), hospital:m_hospitals(id,name), t_medications(*), t_medical_expenses(id,total_amount,payment_date)')
         .eq('organization_id', orgId!)
         .is('deleted_at', null)
         .order('visit_date', { ascending: false });
@@ -37,8 +37,8 @@ export function useVisit(id: string) {
     queryKey: ['visits', id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('visits')
-        .select('*, member:members(*), hospital:hospitals(*), medications(*), medical_expenses(*)')
+        .from('t_visits')
+        .select('*, member:m_members(*), hospital:m_hospitals(*), t_medications(*), t_medical_expenses(*)')
         .eq('id', id)
         .eq('organization_id', currentOrganization!.id)
         .single();
@@ -57,7 +57,7 @@ export function useCreateVisit() {
   return useMutation({
     mutationFn: async (visitData: Partial<Visit>) => {
       const { data, error } = await supabase
-        .from('visits')
+        .from('t_visits')
         .insert({ ...visitData, organization_id: currentOrganization!.id })
         .select()
         .single();
@@ -77,7 +77,7 @@ export function useUpdateVisit() {
 
   return useMutation({
     mutationFn: async ({ id, ...data }: Partial<Visit> & { id: string }) => {
-      const { error } = await supabase.from('visits').update(data).eq('id', id);
+      const { error } = await supabase.from('t_visits').update(data).eq('id', id);
       if (error) throw error;
     },
     onSuccess: (_, variables) => {
@@ -94,7 +94,7 @@ export function useDeleteVisit() {
   return useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from('visits')
+        .from('t_visits')
         .update({ deleted_at: new Date().toISOString() })
         .eq('id', id);
       if (error) throw error;

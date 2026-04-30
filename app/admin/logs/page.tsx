@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { Search, Download } from 'lucide-react';
@@ -24,7 +24,7 @@ export default function AdminLogsPage() {
     queryKey: ['admin-logs', filters, page],
     queryFn: async () => {
       let q = supabase
-        .from('system_logs')
+        .from('t_system_logs')
         .select('*, user:users(display_name), organization:organizations(name)', { count: 'exact' })
         .order('created_at', { ascending: false })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);

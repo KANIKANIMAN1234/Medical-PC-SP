@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
@@ -24,9 +24,9 @@ export default function AdminDashboardPage() {
     queryKey: ['admin-stats'],
     queryFn: async () => {
       const [orgsResult, usersResult, logsResult] = await Promise.all([
-        supabase.from('organizations').select('*', { count: 'exact' }).is('deleted_at', null),
-        supabase.from('users').select('*', { count: 'exact' }),
-        supabase.from('system_logs').select('*').order('created_at', { ascending: false }).limit(10),
+        supabase.from('m_organizations').select('*', { count: 'exact' }).is('deleted_at', null),
+        supabase.from('m_users').select('*', { count: 'exact' }),
+        supabase.from('t_system_logs').select('*').order('created_at', { ascending: false }).limit(10),
       ]);
 
       const orgs = orgsResult.data ?? [];

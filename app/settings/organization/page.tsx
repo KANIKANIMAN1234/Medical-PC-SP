@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { Copy, Link2, Shield, Trash2 } from 'lucide-react';
@@ -27,7 +27,7 @@ export default function OrganizationSettingsPage() {
     queryKey: ['org-users', orgId],
     queryFn: async () => {
       const { data } = await supabase
-        .from('organization_users')
+        .from('m_organization_users')
         .select('*, user:users(id,display_name)')
         .eq('organization_id', orgId!);
       return (data ?? []) as OrganizationUser[];
@@ -37,7 +37,7 @@ export default function OrganizationSettingsPage() {
 
   const updateName = useMutation({
     mutationFn: async () => {
-      await supabase.from('organizations').update({ name: orgName }).eq('id', orgId!);
+      await supabase.from('m_organizations').update({ name: orgName }).eq('id', orgId!);
     },
   });
 
@@ -46,7 +46,7 @@ export default function OrganizationSettingsPage() {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + Number(inviteExpiry));
       const { data } = await supabase
-        .from('organization_invitations')
+        .from('m_organization_invitations')
         .insert({
           organization_id: orgId,
           role: inviteRole,
@@ -62,7 +62,7 @@ export default function OrganizationSettingsPage() {
   const removeUser = useMutation({
     mutationFn: async (userId: string) => {
       await supabase
-        .from('organization_users')
+        .from('m_organization_users')
         .delete()
         .eq('organization_id', orgId!)
         .eq('user_id', userId);

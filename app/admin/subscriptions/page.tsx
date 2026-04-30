@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { ExternalLink } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -14,7 +14,7 @@ export default function AdminSubscriptionsPage() {
     queryKey: ['admin-subscriptions'],
     queryFn: async () => {
       const { data: orgs } = await supabase
-        .from('organizations')
+        .from('m_organizations')
         .select('*')
         .is('deleted_at', null)
         .in('plan', ['standard', 'premium']);
@@ -27,7 +27,7 @@ export default function AdminSubscriptionsPage() {
         premium: { count: 0, revenue: 0 },
       };
 
-      const { data: allOrgsData } = await supabase.from('organizations').select('plan, status').is('deleted_at', null);
+      const { data: allOrgsData } = await supabase.from('m_organizations').select('plan, status').is('deleted_at', null);
       (allOrgsData ?? []).forEach((o) => {
         if (!planCounts[o.plan]) planCounts[o.plan] = { count: 0, revenue: 0 };
         planCounts[o.plan].count += 1;

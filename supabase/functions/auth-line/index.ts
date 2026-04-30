@@ -1,4 +1,4 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+﻿import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
@@ -42,7 +42,7 @@ serve(async (req) => {
 
     // users テーブルにupsert
     const { data: user, error: upsertError } = await supabase
-      .from('users')
+      .from('m_users')
       .upsert(
         { line_user_id: lineUserId, display_name: displayName, picture_url: pictureUrl, updated_at: new Date().toISOString() },
         { onConflict: 'line_user_id' }
@@ -78,7 +78,7 @@ serve(async (req) => {
 
     // 既存ユーザーの場合はエラーを無視してJWT生成
     const userId = session?.user?.id || (await supabase
-      .from('users')
+      .from('m_users')
       .select('id')
       .eq('line_user_id', lineUserId)
       .single()

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { Search, Shield } from 'lucide-react';
@@ -19,14 +19,14 @@ export default function AdminUsersPage() {
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['admin-users'],
     queryFn: async () => {
-      const { data } = await supabase.from('users').select('*, organization_users(organization:organizations(name))').order('created_at', { ascending: false });
+      const { data } = await supabase.from('m_users').select('*, organization_users(organization:organizations(name))').order('created_at', { ascending: false });
       return (data ?? []) as AppUser[];
     },
   });
 
   const toggleSuperAdmin = useMutation({
     mutationFn: async ({ userId, isSuperAdmin }: { userId: string; isSuperAdmin: boolean }) => {
-      await supabase.from('users').update({ is_superadmin: isSuperAdmin }).eq('id', userId);
+      await supabase.from('m_users').update({ is_superadmin: isSuperAdmin }).eq('id', userId);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
   });

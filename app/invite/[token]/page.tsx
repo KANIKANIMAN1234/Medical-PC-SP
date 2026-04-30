@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
@@ -27,7 +27,7 @@ export default function InvitePage() {
   useEffect(() => {
     (async () => {
       const { data, error: err } = await supabase
-        .from('organization_invitations')
+        .from('m_organization_invitations')
         .select('*, organization:organizations(*)')
         .eq('token', token)
         .is('used_at', null)
@@ -38,7 +38,7 @@ export default function InvitePage() {
         setError('この招待リンクは無効か期限切れです。');
       } else {
         const { data: inviter } = await supabase
-          .from('users')
+          .from('m_users')
           .select('display_name')
           .eq('id', data.invited_by)
           .single();

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import Link from 'next/link';
@@ -18,7 +18,7 @@ export default function AdminOrganizationsPage() {
     queryKey: ['admin-organizations'],
     queryFn: async () => {
       const { data } = await supabase
-        .from('organizations')
+        .from('m_organizations')
         .select('*, organization_users(count)')
         .order('created_at', { ascending: false });
       return data ?? [];

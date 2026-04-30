@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -73,7 +73,7 @@ function CallbackInner() {
 
         // 4. ユーザー情報とグループ情報を取得
         const { data: userData, error: userError } = await supabase
-          .from('users')
+          .from('m_users')
           .select('*')
           .eq('id', data.user.id)
           .single();
@@ -82,7 +82,7 @@ function CallbackInner() {
 
         // 5. 所属グループ取得
         const { data: orgUsersData } = await supabase
-          .from('organization_users')
+          .from('m_organization_users')
           .select('*, organization:organizations(*)')
           .eq('user_id', userData.id);
 

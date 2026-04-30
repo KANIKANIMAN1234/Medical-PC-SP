@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -18,13 +18,13 @@ export default function AdminOrgDetailPage() {
     queryKey: ['admin-org', id],
     queryFn: async () => {
       const [orgResult, membersResult, logsResult, dataCountResult] = await Promise.all([
-        supabase.from('organizations').select('*, organization_users(*, user:users(display_name))').eq('id', id).single(),
-        supabase.from('organization_users').select('*, user:users(id,display_name)').eq('organization_id', id),
-        supabase.from('system_logs').select('*, user:users(display_name)').eq('organization_id', id).order('created_at', { ascending: false }).limit(10),
+        supabase.from('m_organizations').select('*, organization_users(*, user:users(display_name))').eq('id', id).single(),
+        supabase.from('m_organization_users').select('*, user:users(id,display_name)').eq('organization_id', id),
+        supabase.from('t_system_logs').select('*, user:users(display_name)').eq('organization_id', id).order('created_at', { ascending: false }).limit(10),
         Promise.all([
-          supabase.from('visits').select('*', { count: 'exact', head: true }).eq('organization_id', id),
-          supabase.from('medical_expenses').select('*', { count: 'exact', head: true }).eq('organization_id', id),
-          supabase.from('health_checkups').select('*', { count: 'exact', head: true }).eq('organization_id', id),
+          supabase.from('t_visits').select('*', { count: 'exact', head: true }).eq('organization_id', id),
+          supabase.from('t_medical_expenses').select('*', { count: 'exact', head: true }).eq('organization_id', id),
+          supabase.from('t_health_checkups').select('*', { count: 'exact', head: true }).eq('organization_id', id),
         ]),
       ]);
 

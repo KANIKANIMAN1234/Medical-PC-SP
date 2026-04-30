@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import type { Medication } from '@/types/app';
@@ -12,8 +12,8 @@ export function useMedications(activeOnly = false) {
     queryKey: ['medications', orgId, selectedMemberId, activeOnly],
     queryFn: async () => {
       let query = supabase
-        .from('medications')
-        .select('*, member:members(id,name)')
+        .from('t_medications')
+        .select('*, member:m_members(id,name)')
         .eq('organization_id', orgId!)
         .is('deleted_at', null)
         .order('start_date', { ascending: false });
@@ -40,7 +40,7 @@ export function useCreateMedication() {
   return useMutation({
     mutationFn: async (data: Partial<Medication>) => {
       const { data: result, error } = await supabase
-        .from('medications')
+        .from('t_medications')
         .insert({ ...data, organization_id: currentOrganization!.id })
         .select()
         .single();
@@ -60,7 +60,7 @@ export function useUpdateMedication() {
 
   return useMutation({
     mutationFn: async ({ id, ...data }: Partial<Medication> & { id: string }) => {
-      const { error } = await supabase.from('medications').update(data).eq('id', id);
+      const { error } = await supabase.from('t_medications').update(data).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['medications'] }),
@@ -74,7 +74,7 @@ export function useDeleteMedication() {
   return useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from('medications')
+        .from('t_medications')
         .update({ deleted_at: new Date().toISOString() })
         .eq('id', id);
       if (error) throw error;

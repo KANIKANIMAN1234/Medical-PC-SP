@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import type { HealthCheckup, OcrCheckupResult } from '@/types/app';
@@ -12,8 +12,8 @@ export function useCheckups() {
     queryKey: ['checkups', orgId, selectedMemberId],
     queryFn: async () => {
       let query = supabase
-        .from('health_checkups')
-        .select('*, member:members(id,name), checkup_items(*)')
+        .from('t_health_checkups')
+        .select('*, member:m_members(id,name), t_checkup_items(*)')
         .eq('organization_id', orgId!)
         .is('deleted_at', null)
         .order('checkup_date', { ascending: false });
@@ -37,8 +37,8 @@ export function useCheckup(id: string) {
     queryKey: ['checkups', id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('health_checkups')
-        .select('*, member:members(*), checkup_items(*)')
+        .from('t_health_checkups')
+        .select('*, member:m_members(*), t_checkup_items(*)')
         .eq('id', id)
         .eq('organization_id', currentOrganization!.id)
         .single();
@@ -58,8 +58,8 @@ export function useCheckupTrends(itemName: string) {
     queryKey: ['checkup-trends', orgId, selectedMemberId, itemName],
     queryFn: async () => {
       let q = supabase
-        .from('checkup_items')
-        .select('value, judgment, health_checkup:health_checkups!inner(checkup_date, organization_id, member_id)')
+        .from('t_checkup_items')
+        .select('value, judgment, health_checkup:t_health_checkups!inner(checkup_date, organization_id, member_id)')
         .eq('item_name', itemName)
         .eq('health_checkup.organization_id', orgId!)
         .order('health_checkup(checkup_date)', { ascending: true });
@@ -89,7 +89,7 @@ export function useCreateCheckup() {
       items: HealthCheckup['checkup_items'];
     }) => {
       const { data: newCheckup, error } = await supabase
-        .from('health_checkups')
+        .from('t_health_checkups')
         .insert({ ...checkup, organization_id: currentOrganization!.id })
         .select()
         .single();
@@ -97,7 +97,7 @@ export function useCreateCheckup() {
 
       if (items && items.length > 0) {
         const { error: itemsError } = await supabase
-          .from('checkup_items')
+          .from('t_checkup_items')
           .insert(items.map((item) => ({ ...item, checkup_id: newCheckup.id })));
         if (itemsError) throw itemsError;
       }

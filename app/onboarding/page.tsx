@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -27,14 +27,14 @@ export default function OnboardingPage() {
     try {
       // organizations INSERT
       const { data: org, error: orgError } = await supabase
-        .from('organizations')
+        .from('m_organizations')
         .insert({ name: orgName.trim(), plan: 'free' })
         .select()
         .single();
       if (orgError) throw orgError;
 
       // organization_users INSERT (owner)
-      await supabase.from('organization_users').insert({
+      await supabase.from('m_organization_users').insert({
         organization_id: org.id,
         user_id: user!.id,
         role: 'owner',

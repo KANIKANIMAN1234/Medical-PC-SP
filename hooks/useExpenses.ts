@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import type { MedicalExpense, OcrReceiptResult } from '@/types/app';
@@ -13,8 +13,8 @@ export function useExpenses(year?: number) {
     queryKey: ['expenses', orgId, selectedMemberId, targetYear],
     queryFn: async () => {
       let query = supabase
-        .from('medical_expenses')
-        .select('*, member:members(id,name)')
+        .from('t_medical_expenses')
+        .select('*, member:m_members(id,name)')
         .eq('organization_id', orgId!)
         .is('deleted_at', null)
         .gte('payment_date', `${targetYear}-01-01`)
@@ -40,7 +40,7 @@ export function useCreateExpense() {
   return useMutation({
     mutationFn: async (data: Partial<MedicalExpense>) => {
       const { data: result, error } = await supabase
-        .from('medical_expenses')
+        .from('t_medical_expenses')
         .insert({ ...data, organization_id: currentOrganization!.id })
         .select()
         .single();
@@ -61,7 +61,7 @@ export function useDeleteExpense() {
   return useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from('medical_expenses')
+        .from('t_medical_expenses')
         .update({ deleted_at: new Date().toISOString() })
         .eq('id', id);
       if (error) throw error;

@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import type { Member } from '@/types/app';
@@ -12,7 +12,7 @@ export function useMembers() {
     queryKey: ['members', orgId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('members')
+        .from('m_members')
         .select('*')
         .eq('organization_id', orgId!)
         .is('deleted_at', null)
@@ -33,7 +33,7 @@ export function useCreateMember() {
   return useMutation({
     mutationFn: async (data: Partial<Member>) => {
       const { data: result, error } = await supabase
-        .from('members')
+        .from('m_members')
         .insert({ ...data, organization_id: currentOrganization!.id })
         .select()
         .single();
@@ -50,7 +50,7 @@ export function useUpdateMember() {
 
   return useMutation({
     mutationFn: async ({ id, ...data }: Partial<Member> & { id: string }) => {
-      const { error } = await supabase.from('members').update(data).eq('id', id);
+      const { error } = await supabase.from('m_members').update(data).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['members'] }),
@@ -64,7 +64,7 @@ export function useDeleteMember() {
   return useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from('members')
+        .from('m_members')
         .update({ deleted_at: new Date().toISOString() })
         .eq('id', id);
       if (error) throw error;

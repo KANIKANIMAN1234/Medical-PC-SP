@@ -1,4 +1,4 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+﻿import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
@@ -23,7 +23,7 @@ serve(async (req) => {
 
     // LINE User ID 取得
     const { data: user, error: userError } = await supabase
-      .from('users')
+      .from('m_users')
       .select('line_user_id')
       .eq('id', user_id)
       .single();
@@ -55,7 +55,7 @@ serve(async (req) => {
 
     // notifications テーブルに sent_at を更新
     await supabase
-      .from('notifications')
+      .from('t_notifications')
       .update({ sent_at: new Date().toISOString() })
       .eq('user_id', user_id)
       .is('sent_at', null)
