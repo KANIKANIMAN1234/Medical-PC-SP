@@ -41,19 +41,14 @@ function CallbackInner() {
 
     (async () => {
       try {
-        // 1. LINE Token APIでIDトークン取得
-        const tokenRes = await fetch('https://api.line.me/oauth2/v2.1/token', {
+        // 1. サーバーサイドAPIルート経由でIDトークン取得（client_secretを安全に使用）
+        const tokenRes = await fetch('/api/auth/line', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({
-            grant_type: 'authorization_code',
-            code,
-            redirect_uri: process.env.NEXT_PUBLIC_LINE_LOGIN_REDIRECT_URI!,
-            client_id: process.env.NEXT_PUBLIC_LINE_LOGIN_CHANNEL_ID!,
-          }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
         });
         const tokenData = await tokenRes.json();
-        if (!tokenData.id_token) throw new Error('IDトークンの取得に失敗しました');
+        if (!tokenRes.ok || !tokenData.id_token) throw new Error(tokenData.error || 'IDトークンの取得に失敗しました');
 
         // 2. Edge FunctionでSupabase JWT取得
         const authRes = await fetch(
