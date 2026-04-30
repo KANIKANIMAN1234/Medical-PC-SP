@@ -41,49 +41,54 @@ function CallbackInner() {
 
     (async () => {
       try {
-        // 1. サーバーサイドAPIルート経由でIDトークン取得（client_secretを安全に使用）
+        // Step 1: LINE code → id_token（サーバー側で client_secret を使用）
         const tokenRes = await fetch('/api/auth/line', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code }),
         });
         const tokenData = await tokenRes.json();
-        if (!tokenRes.ok || !tokenData.id_token) throw new Error(tokenData.error || 'IDトークンの取得に失敗しました');
+        if (!tokenRes.ok || !tokenData.id_token) {
+          throw new Error(tokenData.error || 'IDトークンの取得に失敗しました');
+        }
 
-        // 2. Edge FunctionでSupabase JWT取得
+        // Step 2: id_token → hashed_token（Supabase Edge Function）
         const authRes = await fetch(
           `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/auth-line`,
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+              'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+              'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
             },
             body: JSON.stringify({ id_token: tokenData.id_token }),
           }
         );
-        const { data, error: authError } = await authRes.json();
+        const { data: authData, error: authError } = await authRes.json();
         if (authError) throw new Error(authError);
 
-        // 3. Supabase セッション設定
-        await supabase.auth.setSession({
-          access_token: data.access_token,
-          refresh_token: data.refresh_token,
+        // Step 3: hashed_token → Supabase セッション
+        const { data: sessionData, error: sessionError } = await supabase.auth.verifyOtp({
+          token_hash: authData.hashed_token,
+          type: 'magiclink',
         });
+        if (sessionError) throw sessionError;
+        if (!sessionData.user) throw new Error('セッションの取得に失敗しました');
 
-        // 4. ユーザー情報とグループ情報を取得
+        // Step 4: m_users からユーザー情報取得
         const { data: userData, error: userError } = await supabase
           .from('m_users')
           .select('*')
-          .eq('id', data.user.id)
+          .eq('id', sessionData.user.id)
           .single();
         if (userError) throw userError;
         setUser(userData);
 
-        // 5. 所属グループ取得
+        // Step 5: 所属組織を確認してルーティング
         const { data: orgUsersData } = await supabase
           .from('m_organization_users')
-          .select('*, organization:organizations(*)')
+          .select('*, organization:m_organizations(*)')
           .eq('user_id', userData.id);
 
         if (orgUsersData && orgUsersData.length > 0) {
@@ -97,7 +102,7 @@ function CallbackInner() {
         }
       } catch (err) {
         console.error(err);
-        setError('ログインに失敗しました。もう一度お試しください。');
+        setError(`ログインに失敗しました: ${err instanceof Error ? err.message : String(err)}`);
       }
     })();
   }, []);
@@ -115,12 +120,5 @@ function CallbackInner() {
     );
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-white">
-      <div className="text-center">
-        <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-sm text-gray-500">ログイン中...</p>
-      </div>
-    </div>
-  );
+  return <LoadingView />;
 }
