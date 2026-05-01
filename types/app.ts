@@ -61,11 +61,16 @@ export interface Member {
 export interface Hospital {
   id: string;
   organization_id: string;
+  user_id?: string;
   name: string;
-  department?: string;
+  departments?: string[];
   phone?: string;
   address?: string;
+  business_hours?: string;
+  website_url?: string;
   notes?: string;
+  is_favorite?: boolean;
+  deleted_at?: string;
   created_at: string;
 }
 
