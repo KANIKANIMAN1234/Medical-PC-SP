@@ -28,13 +28,13 @@ export function useHospitals() {
 export function useCreateHospital() {
   const supabase = createClient();
   const qc = useQueryClient();
-  const { currentOrganization } = useAppStore();
+  const { currentOrganization, user } = useAppStore();
 
   return useMutation({
     mutationFn: async (data: Partial<Hospital>) => {
       const { data: result, error } = await supabase
         .from('m_hospitals')
-        .insert({ ...data, organization_id: currentOrganization!.id })
+        .insert({ ...data, organization_id: currentOrganization!.id, user_id: user!.id })
         .select()
         .single();
       if (error) throw error;

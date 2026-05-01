@@ -18,7 +18,11 @@ export default function HospitalsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    await createHospital(form);
+    const { department, ...rest } = form;
+    await createHospital({
+      ...rest,
+      departments: department ? [department] : [],
+    });
     setShowForm(false);
     setForm({ name: '', department: '', phone: '', address: '', notes: '' });
   };
@@ -47,7 +51,7 @@ export default function HospitalsPage() {
             <div className="flex-1">
               <p className="font-semibold text-gray-900">{h.name}</p>
               <div className="flex gap-3 text-xs text-gray-500 mt-0.5">
-                {h.department && <span>{h.department}</span>}
+                {h.departments?.length > 0 && <span>{h.departments.join('・')}</span>}
                 {h.phone && <span>📞 {h.phone}</span>}
                 {h.address && <span>📍 {h.address}</span>}
               </div>
