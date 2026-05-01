@@ -11,7 +11,7 @@ serve(async (req) => {
     const { id_token } = await req.json();
     if (!id_token) {
       return new Response(
-        JSON.stringify({ data: null, error: { code: 'BAD_REQUEST', message: 'id_token is required' } }),
+        JSON.stringify({ data: null, error: 'id_token is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -26,13 +26,14 @@ serve(async (req) => {
 
     if (!verifyRes.ok) {
       return new Response(
-        JSON.stringify({ data: null, error: { code: 'UNAUTHORIZED', message: 'Invalid LINE token' } }),
+        JSON.stringify({ data: null, error: 'Invalid LINE token' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const lineUser = await verifyRes.json();
     const { sub: lineUserId, name: displayName, picture: pictureUrl } = lineUser;
+    const email = `${lineUserId}@line.kusuri.app`;
 
     // Supabase Admin クライアント
     const supabase = createClient(
@@ -40,61 +41,52 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // users テーブルにupsert
-    const { data: user, error: upsertError } = await supabase
-      .from('m_users')
-      .upsert(
-        { line_user_id: lineUserId, display_name: displayName, picture_url: pictureUrl, updated_at: new Date().toISOString() },
-        { onConflict: 'line_user_id' }
-      )
-      .select()
-      .single();
+    // Auth ユーザーが存在しない場合は作成（既存の場合はエラーを無視）
+    await supabase.auth.admin.createUser({
+      email,
+      email_confirm: true,
+      user_metadata: { line_user_id: lineUserId, display_name: displayName, picture_url: pictureUrl },
+    });
 
-    if (upsertError) throw upsertError;
-
-    // Supabase JWT発行（カスタムクレーム付き）
-    const { data: authData, error: authError } = await supabase.auth.admin.generateLink({
+    // Magic link トークンを生成（ユーザーが既存でも動作する）
+    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
       type: 'magiclink',
-      email: `${lineUserId}@line.kusuri.app`,
+      email,
       options: {
-        data: {
-          line_user_id: lineUserId,
-          display_name: displayName,
-          picture_url: pictureUrl,
-          is_superadmin: user.is_superadmin,
-        },
+        data: { line_user_id: lineUserId, display_name: displayName, picture_url: pictureUrl },
       },
     });
+    if (linkError) throw linkError;
 
-    if (authError) throw authError;
+    const authUserId = linkData.user.id;
 
-    // usersテーブルのidをauth.uidに合わせるためsignInWithPassword相当のJWT取得
-    const { data: session, error: sessionError } = await supabase.auth.admin.createUser({
-      email: `${lineUserId}@line.kusuri.app`,
-      email_confirm: true,
-      user_metadata: { line_user_id: lineUserId, display_name: displayName },
-      app_metadata: { is_superadmin: user.is_superadmin },
-    });
-
-    // 既存ユーザーの場合はエラーを無視してJWT生成
-    const userId = session?.user?.id || (await supabase
+    // m_users テーブルにupsert（id を auth user id に揃える）
+    const { data: existingUser } = await supabase
       .from('m_users')
       .select('id')
       .eq('line_user_id', lineUserId)
-      .single()
-      .then(r => r.data?.id));
+      .maybeSingle();
 
-    const jwt = authData?.properties?.hashed_token ?? '';
+    if (!existingUser) {
+      const { error: insertError } = await supabase
+        .from('m_users')
+        .insert({
+          id: authUserId,
+          line_user_id: lineUserId,
+          display_name: displayName,
+          picture_url: pictureUrl,
+        });
+      if (insertError) throw insertError;
+    } else {
+      await supabase
+        .from('m_users')
+        .update({ display_name: displayName, picture_url: pictureUrl, updated_at: new Date().toISOString() })
+        .eq('line_user_id', lineUserId);
+    }
 
     return new Response(
       JSON.stringify({
-        data: {
-          user_id: userId,
-          display_name: displayName,
-          picture_url: pictureUrl,
-          is_superadmin: user.is_superadmin,
-          access_token: jwt,
-        },
+        data: { hashed_token: linkData.properties.hashed_token },
         error: null,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -102,7 +94,7 @@ serve(async (req) => {
   } catch (err) {
     console.error(err);
     return new Response(
-      JSON.stringify({ data: null, error: { code: 'INTERNAL_ERROR', message: String(err) } }),
+      JSON.stringify({ data: null, error: String(err) }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
