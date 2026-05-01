@@ -51,7 +51,7 @@ export default function HospitalsPage() {
             <div className="flex-1">
               <p className="font-semibold text-gray-900">{h.name}</p>
               <div className="flex gap-3 text-xs text-gray-500 mt-0.5">
-                {h.departments?.length > 0 && <span>{h.departments.join('・')}</span>}
+                {(h.departments?.length ?? 0) > 0 && <span>{h.departments!.join('・')}</span>}
                 {h.phone && <span>📞 {h.phone}</span>}
                 {h.address && <span>📍 {h.address}</span>}
               </div>
