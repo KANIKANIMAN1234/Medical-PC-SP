@@ -1,6 +1,41 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 
+type MedItem = {
+  drug_name?: string;
+  dosage?: string;
+  frequency?: string;
+  days_supply?: number | null;
+  purpose?: string;
+};
+
+function normalizeItems(parsed: Record<string, unknown>, rawText: string) {
+  const prescribed_date = (parsed.prescribed_date as string | null) ?? null;
+  let items: MedItem[] = [];
+
+  if (Array.isArray(parsed.items)) {
+    items = (parsed.items as MedItem[])
+      .slice(0, 3)
+      .filter((it) => it && typeof it === 'object');
+  }
+
+  if (items.length === 0 && parsed.drug_name) {
+    items = [{
+      drug_name: parsed.drug_name as string,
+      dosage: parsed.dosage as string | undefined,
+      frequency: parsed.frequency as string | undefined,
+      days_supply: parsed.days_supply as number | null | undefined,
+      purpose: parsed.purpose as string | undefined,
+    }];
+  }
+
+  return {
+    items,
+    prescribed_date,
+    ocr_raw_text: rawText,
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -17,7 +52,6 @@ serve(async (req) => {
 
     const apiKey = Deno.env.get('GOOGLE_CLOUD_VISION_API_KEY')!;
 
-    // Google Cloud Vision API でOCR
     const visionRes = await fetch(
       `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
       {
@@ -37,12 +71,14 @@ serve(async (req) => {
 
     if (!rawText) {
       return new Response(
-        JSON.stringify({ data: { drug_name: '', dosage: '', frequency: '', days_supply: null, purpose: '', ocr_raw_text: '' }, error: null }),
+        JSON.stringify({
+          data: { items: [], prescribed_date: null, ocr_raw_text: '' },
+          error: null,
+        }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // OpenAI で薬情報を構造化抽出
     const openaiKey = Deno.env.get('OPENAI_API_KEY')!;
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -55,15 +91,20 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `処方箋・薬袋・お薬説明書の画像テキストから薬の情報を抽出してJSON形式で返してください。
-フィールド:
-- drug_name: 薬品名（商品名・一般名含む。例: アムロジピン錠5mg）
-- dosage: 1回用量（例: 1錠、2カプセル）
-- frequency: 服用タイミング（例: 1日1回朝食後、毎食後）
-- days_supply: 日数（整数、不明な場合はnull）
-- purpose: 用途・効能（例: 高血圧、花粉症）
-- prescribed_date: 処方日（YYYY-MM-DD形式、不明な場合はnull）
-情報が読み取れない場合は空文字またはnullを返してください。`,
+            content: `処方箋・薬袋・お薬説明書のOCRテキストから、薬1件〜最大3件を抽出してJSONで返してください。
+
+必須キー:
+- prescribed_date: 処方日（YYYY-MM-DD、不明ならnull）
+- items: 薬の配列（1〜3要素）。同じ処方内の複数剤はそれぞれ別要素にする。読み取れる薬が1つだけなら要素は1つ。
+
+各 items[] 要素のキー:
+- drug_name: 薬品名（商品名・一般名）
+- dosage: 1回用量（例: 1錠）
+- frequency: 服用タイミング（例: 1日1回朝食後）
+- days_supply: 処方日数（整数、不明ならnull）
+- purpose: 用途・効能（不明なら空文字）
+
+読み取れない場合は items は空配列にする。`,
           },
           { role: 'user', content: rawText },
         ],
@@ -73,9 +114,10 @@ serve(async (req) => {
 
     const openaiData = await openaiRes.json();
     const parsed = JSON.parse(openaiData.choices?.[0]?.message?.content ?? '{}');
+    const normalized = normalizeItems(parsed, rawText);
 
     return new Response(
-      JSON.stringify({ data: { ...parsed, ocr_raw_text: rawText }, error: null }),
+      JSON.stringify({ data: normalized, error: null }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {

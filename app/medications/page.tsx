@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { Plus, Camera, Loader2 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -9,16 +9,46 @@ import { useMedications, useCreateMedication, useDeleteMedication } from '@/hook
 import { useMembers } from '@/hooks/useMembers';
 import { formatDate, getDaysRemaining } from '@/lib/utils';
 import { createClient } from '@/lib/supabase';
+import type { Medication } from '@/types/app';
+
+const SLOT_COUNT = 3;
+
+type MedRow = {
+  name: string;
+  dosage: string;
+  frequency: string;
+  days_supply: string;
+  notes: string;
+  is_ongoing: boolean;
+};
+
+function emptyRow(): MedRow {
+  return {
+    name: '',
+    dosage: '',
+    frequency: '',
+    days_supply: '',
+    notes: '',
+    is_ongoing: false,
+  };
+}
+
+function initialRows(): MedRow[] {
+  return Array.from({ length: SLOT_COUNT }, emptyRow);
+}
 
 /** Edge Function ocr-medication のHTTPボディ */
 type OcrMedicationResponse = {
   data: {
-    drug_name?: string;
-    dosage?: string;
-    frequency?: string;
-    days_supply?: number | null;
-    purpose?: string;
+    items?: Array<{
+      drug_name?: string;
+      dosage?: string;
+      frequency?: string;
+      days_supply?: number | null;
+      purpose?: string;
+    }>;
     prescribed_date?: string | null;
+    ocr_raw_text?: string;
   } | null;
   error: string | null;
 };
@@ -28,6 +58,14 @@ function toDateInputValue(v: string | null | undefined): string | undefined {
   const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;
   return undefined;
+}
+
+function medDisplayName(m: Medication & { drug_name?: string }) {
+  return m.drug_name ?? m.name ?? '';
+}
+
+function medStartDate(m: Medication & { prescribed_date?: string }) {
+  return m.prescribed_date ?? m.start_date;
 }
 
 export default function MedicationsPage() {
@@ -43,38 +81,38 @@ export default function MedicationsPage() {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrPreview, setOcrPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [saving, setSaving] = useState(false);
 
   const today = new Date().toISOString().split('T')[0];
 
-  const [form, setForm] = useState({
-    member_id: '',
-    name: '',
-    dosage: '',
-    frequency: '',
-    start_date: today,
-    end_date: '',
-    is_ongoing: false,
-    notes: '',
-  });
+  const [memberId, setMemberId] = useState('');
+  const [startDate, setStartDate] = useState(today);
+  const [rows, setRows] = useState<MedRow[]>(initialRows);
 
-  const set = (field: string, value: string | boolean) => setForm((f) => ({ ...f, [field]: value }));
+  const updateRow = useCallback((index: number, patch: Partial<MedRow>) => {
+    setRows((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...patch };
+      return next;
+    });
+  }, []);
 
   const active = medications.filter((m) => m.is_ongoing || (m.end_date ?? '') >= today);
   const displayed = activeTab === 'active' ? active : medications;
 
-  // 画像をBase64に変換
+  const filledRowCount = rows.filter((r) => r.name.trim()).length;
+
   const toBase64 = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        resolve(result.split(',')[1]); // data:...;base64, の後の部分のみ
+        resolve(result.split(',')[1]);
       };
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
 
-  // 写真アップロード→OCR処理
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -94,29 +132,28 @@ export default function MedicationsPage() {
       const ocr = payload?.data;
       if (!ocr) throw new Error('レスポンスにデータがありません');
 
+      const items = ocr.items ?? [];
       const dateNorm = toDateInputValue(ocr.prescribed_date);
+      if (dateNorm) setStartDate(dateNorm);
 
-      setForm((f) => {
-        const start = dateNorm ?? f.start_date;
-        let end = f.end_date;
-        if (
-          ocr.days_supply != null &&
-          Number.isFinite(Number(ocr.days_supply)) &&
-          !f.is_ongoing
-        ) {
-          const d = new Date(`${start}T12:00:00`);
-          d.setDate(d.getDate() + Number(ocr.days_supply));
-          end = d.toISOString().split('T')[0];
+      setRows((prev) => {
+        const next = prev.map((r) => ({ ...r }));
+        for (let i = 0; i < SLOT_COUNT && i < items.length; i++) {
+          const it = items[i];
+          const purpose = it.purpose?.trim();
+          next[i] = {
+            ...next[i],
+            name: it.drug_name?.trim() || next[i].name,
+            dosage: it.dosage?.trim() || next[i].dosage,
+            frequency: it.frequency?.trim() || next[i].frequency,
+            days_supply:
+              it.days_supply != null && Number.isFinite(Number(it.days_supply))
+                ? String(Number(it.days_supply))
+                : next[i].days_supply,
+            notes: purpose ? `用途: ${purpose}` : next[i].notes,
+          };
         }
-        return {
-          ...f,
-          name: ocr.drug_name?.trim() || f.name,
-          dosage: ocr.dosage?.trim() || f.dosage,
-          frequency: ocr.frequency?.trim() || f.frequency,
-          start_date: start,
-          end_date: end,
-          notes: ocr.purpose?.trim() ? `用途: ${ocr.purpose.trim()}` : f.notes,
-        };
+        return next;
       });
     } catch (err) {
       console.error('OCR failed:', err);
@@ -129,15 +166,46 @@ export default function MedicationsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    await createMedication(form);
-    setShowForm(false);
-    setOcrPreview(null);
-    setForm({ member_id: '', name: '', dosage: '', frequency: '', start_date: today, end_date: '', is_ongoing: false, notes: '' });
+    if (!memberId || filledRowCount === 0) return;
+    setSaving(true);
+    try {
+      for (const row of rows) {
+        if (!row.name.trim()) continue;
+        const ds = row.days_supply ? Number(row.days_supply) : undefined;
+        let end = '';
+        if (ds && !row.is_ongoing) {
+          const d = new Date(`${startDate}T12:00:00`);
+          d.setDate(d.getDate() + ds);
+          end = d.toISOString().split('T')[0];
+        }
+        await createMedication({
+          member_id: memberId,
+          drug_name: row.name.trim(),
+          prescribed_date: startDate,
+          dosage: row.dosage || undefined,
+          frequency: row.frequency || undefined,
+          days_supply: ds,
+          end_date: end || undefined,
+          purpose: row.notes?.trim() || undefined,
+          is_ongoing: row.is_ongoing,
+        } as Partial<Medication> & { drug_name: string; prescribed_date: string });
+      }
+      setShowForm(false);
+      setOcrPreview(null);
+      setRows(initialRows());
+      setStartDate(today);
+      setMemberId('');
+    } catch {
+      /* noop */
+    }
+    setSaving(false);
   };
 
   const handleOpenForm = () => {
     setOcrPreview(null);
-    setForm({ member_id: '', name: '', dosage: '', frequency: '', start_date: today, end_date: '', is_ongoing: false, notes: '' });
+    setRows(initialRows());
+    setStartDate(today);
+    setMemberId('');
     setShowForm(true);
   };
 
@@ -150,7 +218,6 @@ export default function MedicationsPage() {
         </button>
       }
     >
-      {/* タブ */}
       <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit">
         {(['active', 'all'] as const).map((tab) => (
           <button
@@ -176,6 +243,9 @@ export default function MedicationsPage() {
 
       <div className="grid gap-3 max-w-3xl">
         {displayed.map((m) => {
+          const mExt = m as Medication & { drug_name?: string; prescribed_date?: string };
+          const label = medDisplayName(mExt);
+          const start = medStartDate(mExt);
           const daysLeft = !m.is_ongoing && m.end_date ? getDaysRemaining(m.end_date) : null;
           const isActive = m.is_ongoing || (m.end_date ?? '') >= today;
           return (
@@ -183,7 +253,7 @@ export default function MedicationsPage() {
               <span className="text-2xl">💊</span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-semibold text-gray-900">{m.name}</p>
+                  <p className="font-semibold text-gray-900">{label}</p>
                   {m.member && <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{m.member.name}</span>}
                   {m.is_ongoing && (
                     <span className="text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">常用</span>
@@ -199,7 +269,7 @@ export default function MedicationsPage() {
                 </div>
                 <p className="text-sm text-gray-500 mt-0.5">
                   {[m.dosage, m.frequency].filter(Boolean).join(' · ')}
-                  {m.start_date && ` · ${formatDate(m.start_date, 'yyyy/M/d')}〜`}
+                  {start && ` · ${formatDate(start, 'yyyy/M/d')}〜`}
                   {m.end_date && formatDate(m.end_date, 'yyyy/M/d')}
                 </p>
               </div>
@@ -214,26 +284,28 @@ export default function MedicationsPage() {
         })}
       </div>
 
-      {/* 追加フォームモーダル */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowForm(false)} />
           <div className="relative bg-white rounded-xl shadow-xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-base font-semibold text-gray-900 mb-4">薬を追加</h2>
+            <h2 className="text-base font-semibold text-gray-900 mb-2">薬を追加（最大{SLOT_COUNT}件）</h2>
+            <p className="text-xs text-gray-500 mb-4">薬品名がある行だけ保存されます。写真からは複数薬を自動分配します。</p>
             <form onSubmit={handleCreate} className="space-y-3">
-
-              {/* 受診者 */}
               <div>
                 <label className="label">受診者 *</label>
-                <select value={form.member_id} onChange={(e) => set('member_id', e.target.value)} className="input" required>
+                <select value={memberId} onChange={(e) => setMemberId(e.target.value)} className="input" required>
                   <option value="">選択</option>
                   {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
               </div>
 
-              {/* OCR写真アップロード */}
+              <div>
+                <label className="label">開始日（共通）</label>
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input" />
+              </div>
+
               <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 bg-gray-50">
-                <p className="text-xs font-medium text-gray-600 mb-2">📷 薬袋・処方箋・説明書の写真から自動入力</p>
+                <p className="text-xs font-medium text-gray-600 mb-2">📷 写真から自動入力（最大{SLOT_COUNT}件）</p>
                 {ocrPreview && (
                   <div className="mb-3 relative">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -267,50 +339,83 @@ export default function MedicationsPage() {
                 )}
               </div>
 
-              {/* 薬品名 */}
-              <div>
-                <label className="label">薬品名 *</label>
-                <input type="text" value={form.name} onChange={(e) => set('name', e.target.value)} className="input" required placeholder="例: アムロジピン 5mg" />
-              </div>
-
-              {/* 用量・服用タイミング */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">用量</label>
-                  <input type="text" value={form.dosage} onChange={(e) => set('dosage', e.target.value)} className="input" placeholder="例: 1錠" />
+              {rows.map((row, idx) => (
+                <div key={idx} className="rounded-lg border border-gray-200 bg-gray-50/90 p-4 space-y-3">
+                  <p className="text-xs font-semibold text-gray-700">お薬 {idx + 1}</p>
+                  <div>
+                    <label className="label">薬品名 {idx === 0 ? '*' : ''}</label>
+                    <input
+                      type="text"
+                      value={row.name}
+                      onChange={(e) => updateRow(idx, { name: e.target.value })}
+                      className="input"
+                      placeholder="例: アムロジピン 5mg"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label">用量</label>
+                      <input
+                        type="text"
+                        value={row.dosage}
+                        onChange={(e) => updateRow(idx, { dosage: e.target.value })}
+                        className="input"
+                        placeholder="例: 1錠"
+                      />
+                    </div>
+                    <div>
+                      <label className="label">服用タイミング</label>
+                      <input
+                        type="text"
+                        value={row.frequency}
+                        onChange={(e) => updateRow(idx, { frequency: e.target.value })}
+                        className="input"
+                        placeholder="例: 毎朝"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label">日数</label>
+                    <input
+                      type="number"
+                      value={row.days_supply}
+                      onChange={(e) => updateRow(idx, { days_supply: e.target.value })}
+                      className="input"
+                      placeholder="例: 30"
+                      min={1}
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={row.is_ongoing}
+                      onChange={(e) => updateRow(idx, { is_ongoing: e.target.checked })}
+                      className="rounded"
+                    />
+                    常用薬（終了日なし）
+                  </label>
+                  <div>
+                    <label className="label">メモ</label>
+                    <input
+                      type="text"
+                      value={row.notes}
+                      onChange={(e) => updateRow(idx, { notes: e.target.value })}
+                      className="input"
+                      placeholder="用途・副作用など"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="label">服用タイミング</label>
-                  <input type="text" value={form.frequency} onChange={(e) => set('frequency', e.target.value)} className="input" placeholder="例: 毎朝" />
-                </div>
-              </div>
-
-              {/* 開始日・終了日 */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">開始日</label>
-                  <input type="date" value={form.start_date} onChange={(e) => set('start_date', e.target.value)} className="input" />
-                </div>
-                <div>
-                  <label className="label">終了日</label>
-                  <input type="date" value={form.end_date} onChange={(e) => set('end_date', e.target.value)} className="input" disabled={form.is_ongoing} />
-                </div>
-              </div>
-
-              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                <input type="checkbox" checked={form.is_ongoing} onChange={(e) => set('is_ongoing', e.target.checked)} className="rounded" />
-                常用薬（終了日なし）
-              </label>
-
-              {/* メモ */}
-              <div>
-                <label className="label">メモ</label>
-                <input type="text" value={form.notes} onChange={(e) => set('notes', e.target.value)} className="input" placeholder="用途・副作用など" />
-              </div>
+              ))}
 
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowForm(false)} className="btn-secondary flex-1">キャンセル</button>
-                <button type="submit" disabled={ocrLoading} className="btn-primary flex-1">保存する</button>
+                <button
+                  type="submit"
+                  disabled={ocrLoading || saving || !memberId || filledRowCount === 0}
+                  className="btn-primary flex-1"
+                >
+                  {saving ? '保存中...' : filledRowCount > 1 ? `${filledRowCount}件を保存` : '保存する'}
+                </button>
               </div>
             </form>
           </div>
