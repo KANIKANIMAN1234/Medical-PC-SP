@@ -10,6 +10,26 @@ import { useMembers } from '@/hooks/useMembers';
 import { formatDate, getDaysRemaining } from '@/lib/utils';
 import { createClient } from '@/lib/supabase';
 
+/** Edge Function ocr-medication のHTTPボディ */
+type OcrMedicationResponse = {
+  data: {
+    drug_name?: string;
+    dosage?: string;
+    frequency?: string;
+    days_supply?: number | null;
+    purpose?: string;
+    prescribed_date?: string | null;
+  } | null;
+  error: string | null;
+};
+
+function toDateInputValue(v: string | null | undefined): string | undefined {
+  if (!v) return undefined;
+  const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return undefined;
+}
+
 export default function MedicationsPage() {
   const { data: medications = [], isLoading } = useMedications();
   const { data: members = [] } = useMembers();
@@ -64,27 +84,46 @@ export default function MedicationsPage() {
 
     try {
       const base64 = await toBase64(file);
-      const { data, error } = await supabase.functions.invoke('ocr-medication', {
+      const { data: raw, error } = await supabase.functions.invoke<OcrMedicationResponse>('ocr-medication', {
         body: { image_base64: base64 },
       });
       if (error) throw error;
 
-      // OCR結果をフォームに反映
-      if (data) {
-        setForm((f) => ({
+      const payload = raw as OcrMedicationResponse | null;
+      if (payload?.error) throw new Error(payload.error);
+      const ocr = payload?.data;
+      if (!ocr) throw new Error('レスポンスにデータがありません');
+
+      const dateNorm = toDateInputValue(ocr.prescribed_date);
+
+      setForm((f) => {
+        const start = dateNorm ?? f.start_date;
+        let end = f.end_date;
+        if (
+          ocr.days_supply != null &&
+          Number.isFinite(Number(ocr.days_supply)) &&
+          !f.is_ongoing
+        ) {
+          const d = new Date(`${start}T12:00:00`);
+          d.setDate(d.getDate() + Number(ocr.days_supply));
+          end = d.toISOString().split('T')[0];
+        }
+        return {
           ...f,
-          name: data.drug_name || f.name,
-          dosage: data.dosage || f.dosage,
-          frequency: data.frequency || f.frequency,
-          start_date: data.prescribed_date || f.start_date,
-          notes: data.purpose ? `用途: ${data.purpose}` : f.notes,
-        }));
-      }
+          name: ocr.drug_name?.trim() || f.name,
+          dosage: ocr.dosage?.trim() || f.dosage,
+          frequency: ocr.frequency?.trim() || f.frequency,
+          start_date: start,
+          end_date: end,
+          notes: ocr.purpose?.trim() ? `用途: ${ocr.purpose.trim()}` : f.notes,
+        };
+      });
     } catch (err) {
       console.error('OCR failed:', err);
-      alert('OCR処理に失敗しました。手動で入力してください。');
+      alert(`OCR処理に失敗しました。手動で入力してください。\n${err instanceof Error ? err.message : ''}`);
     } finally {
       setOcrLoading(false);
+      if (e.target) e.target.value = '';
     }
   };
 
