@@ -155,19 +155,34 @@ export function useOcrReceipt() {
 
 export function useUploadImage() {
   const supabase = createClient();
+  const { currentOrganization } = useAppStore();
+
   return useMutation({
     mutationFn: async ({
       imageBase64,
       folder,
+      memberId,
     }: {
       imageBase64: string;
       folder: string;
+      memberId?: string;
     }): Promise<{ url: string; fileId: string }> => {
-      const { data, error } = await supabase.functions.invoke('upload-image', {
-        body: { image_base64: imageBase64, folder },
-      });
+      const body: Record<string, unknown> = {
+        image_base64: imageBase64,
+        folder,
+      };
+      if (currentOrganization?.id) body.organization_id = currentOrganization.id;
+      if (memberId) body.member_id = memberId;
+
+      const { data, error } = await supabase.functions.invoke('upload-image', { body });
       if (error) throw error;
-      return data;
+
+      const res = data as { url?: string; fileId?: string; error?: string } | null;
+      if (res && typeof res.error === 'string' && res.error) throw new Error(res.error);
+      if (!res?.url || !res?.fileId) {
+        throw new Error('アップロードの応答が不正です');
+      }
+      return { url: res.url, fileId: res.fileId };
     },
   });
 }

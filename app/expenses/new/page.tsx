@@ -75,7 +75,7 @@ export default function NewExpensePage() {
       let receiptImageUrl: string | undefined;
       let gdriveFileId: string | undefined;
       if (imageBase64) {
-        const uploaded = await uploadImage({ imageBase64, folder: 'receipts' });
+        const uploaded = await uploadImage({ imageBase64, folder: 'receipts', memberId });
         receiptImageUrl = uploaded.url;
         gdriveFileId = uploaded.fileId;
       }
